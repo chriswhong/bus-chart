@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8' />
+    <title>Bus Viz</title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+    <style>
+        html, body {
+          height: 100%;
+        }
+
+        body {
+          margin:0; padding:0;
+          font: 10px avenir;
+          display: flex;
+        }
+
+
+
+        #map {
+          height: 100%;
+        }
+
+        .route-column {
+          flex: 1;
+        }
+
+        #about {
+          position: absolute;
+          top: 0;
+          left: 0;
+          z-index: 10;
+          background: #e2e2e2;
+          padding: 15px;
+          opacity: 0.9;
+        }
+
+        .bus-line {
+          fill: none;
+          stroke: #000;
+        }
+
+        .time-marker {
+          stroke: #000;
+        }
+
+        .axis {
+          stroke: #000;
+          fill: #000;
+        }
+
+        .stop-container {
+          height: 24px;
+          display: flex;
+        }
+
+        .stop-name {
+          margin: auto 0;
+          flex: 1;
+          text-align: right;
+          margin-top: 9px;
+          margin-right: 30px;
+        }
+
+        .stop-chart {
+          flex-basis: 360px;
+        }
+
+        .static-container {
+          display: flex;
+          width: 1200px;
+          height: 1200px;
+          margin: 0 auto;
+          padding: 44px;
+          box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+
+<div class='static-container'>
+  <div class='route-column route-column-left'>
+    <div class='title'><h2>Northbound</h2></div>
+  </div>
+  <div class='route-column route-column-right'>
+    <div class='title'><h2>Southbound</h2></div>
+  </div>
+</div>
+
+
+<script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+<script src="https://d3js.org/d3.v5.min.js"></script>
+<script src='js/papaparse.min.js'></script>
+<script>
+  const containers = document.getElementsByClassName('route-column-left')
+  // helper function to convert papaparse's array of arrays to array of objects
+  const asJson = (csv) => {
+    const headers = csv.shift()
+
+    return csv.map((row) => {
+      const object = {}
+      headers.forEach((header, i) => {
+        object[header] = row[i]
+      })
+      return object
+    })
+  }
+
+  const {
+    offsetWidth: containerWidth
+  } = containers[0]
+
+  const margin = { top: 15, right: 140, bottom: 25, left: 50 }
+  const width = containerWidth - margin.left - margin.right
+
+  d3.select('#chart-container').append('svg')
+    .attr('width', width + margin.left + margin.right)
+    // .attr('height', height + margin.top + margin.bottom)
+    .attr('height', 0)
+    .append('g')
+    .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')')
+
+  const renderStopChart = (stopId, showAxis) => {
+    console.log(stopId)
+
+    const container = document.getElementById(stopId)
+      .getElementsByClassName('stop-chart')[0]
+
+    const {
+      offsetWidth: containerWidth,
+      offsetHeight: containerHeight
+    } = container
+
+    const margin = { top: 1, right: 8, bottom: 0, left: 8 }
+    const width = containerWidth - margin.left - margin.right
+    const height = containerHeight - margin.top - margin.bottom
+
+    const x = d3.scaleTime()
+      .range([0, width])
+      .domain([new Date(1580209201 * 1000), new Date((1580219941 + 60) * 1000)])
+
+    const y = d3.scaleLinear()
+      .range([height, 0])
+      .domain([0, 40])
+
+    const svg = d3.select(`[id="${stopId}"]`).select('.stop-chart')
+      .append('svg')
+      .attr('width', width + margin.left + margin.right)
+      .attr('height', height + margin.top + margin.bottom)
+      .append('g')
+      .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')')
+
+    const trimmedStopId = stopId.slice(stopId.length - 6)
+    const thisStopData = window.stopData.filter(d => d.stopId === trimmedStopId)
+    // draw rectangles
+    // append the bar rectangles to the svg element
+    svg.selectAll('rect')
+      .data(thisStopData)
+      .enter()
+      .append('rect')
+      .attr('x', function (d) { return x(d.timestamp * 1000) })
+      .attr('y', function (d) { return y(Math.abs(d.expectedArrivalSeconds) / 60) })
+      .attr('width', (width / 180) + 1)
+      .attr('height', function (d) { return height - y(Math.abs(d.expectedArrivalSeconds) / 60) })
+      .style('fill', '#69b3a2')
+  }
+
+  const renderStopList = () => {
+    // populate the route columns with divs
+    $.getJSON('data/stop-list.json', (stopList) => {
+      console.log(stopList)
+      const northbound = stopList.filter(d => d.stopId.match(/0-/))
+      const southbound = stopList.filter(d => d.stopId.match(/1-/))
+
+      // populate left column
+      northbound.forEach((d, i) => {
+        $('.route-column-left').append(`
+          <div class="stop-container" id="${d.stopId}">
+            <div class="stop-name">
+              ${d.stopName}
+            </div>
+            <div class="stop-chart">
+            </div>
+          </div>
+        `)
+
+        renderStopChart(d.stopId)
+      })
+
+      southbound.forEach((d) => {
+        $('.route-column-right').append(`
+          <div class="stop-container" id="${d.stopId}">
+            <div class="stop-name">
+              ${d.stopName}
+            </div>
+            <div class="stop-chart">
+            </div>
+          </div>
+        `)
+
+        renderStopChart(d.stopId)
+      })
+    })
+  }
+
+  // parse stops csv, convert to json
+  Papa.parse('data/stops.csv', {
+    download: true,
+    complete: ({ data }) => {
+      const json = asJson(data)
+
+      window.stopData = json
+      renderStopList()
+    }
+  })
+</script>
+</body>
+</html>
